@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <mavlink.h>
+#include "mavlink.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,6 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define MAX_STREAMS 2
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -39,13 +40,14 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t systemID = 1;
-uint8_t componentID = 1;
+const uint8_t systemID = 1;
+const uint8_t componentID = 1;
 mavlink_status_t status;
 mavlink_message_t msg;
-int chan  = MAVLINK_COMM_0; //use channel 0 only if 1 communication channel used
+int chan = MAVLINK_COMM_0; //use channel 0 only if 1 communication channel used
 mavlink_system_t mavlink_system = {
 systemID,
 componentID
@@ -54,6 +56,8 @@ componentID
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -91,6 +95,8 @@ uint8_t system_type = MAV_TYPE_GENERIC;
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -102,6 +108,7 @@ uint8_t system_type = MAV_TYPE_GENERIC;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  comm_receive();
   }
   /* USER CODE END 3 */
 }
@@ -114,6 +121,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -138,19 +146,64 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2;
+  PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 57600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
 }
 
 /* USER CODE BEGIN 4 */
-#ifdef __GNUC__
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-#else
-  #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
-#endif /* __GNUC__ */
-PUTCHAR_PROTOTYPE
-{
-  HAL_UART_Transmit(&hlpuart1, (uint8_t *)&ch, 1, 0xFFFF);
-  return ch;
-}
+
 
 void Mav_Request_Data() {
 mavlink_message_t msg;
@@ -177,11 +230,11 @@ uint8_t buf[MAVLINK_MAX_PACKET_LEN];
   */
 
  // To be setup according to the needed information to be requested from the Pixhawk
- const int  maxStreams = 2;
- const uint8_t MAVStreams[maxStreams] = {MAV_DATA_STREAM_EXTENDED_STATUS, MAV_DATA_STREAM_EXTRA1};
- const uint16_t MAVRates[maxStreams] = {0x02,0x05};
+ //const int  maxStreams = 2;
+ const uint8_t MAVStreams[MAX_STREAMS] = {MAV_DATA_STREAM_EXTENDED_STATUS, MAV_DATA_STREAM_EXTRA1};
+ const uint16_t MAVRates[MAX_STREAMS] = {0x02,0x05};
 
- for (int i=0; i < maxStreams; i++) {
+ for (int i=0; i < MAX_STREAMS; i++) {
    /*
     * mavlink_msg_request_data_stream_pack(system_id, component_id,
     *    &msg,
@@ -205,8 +258,8 @@ void comm_receive() {
   mavlink_status_t status;
 
 
-  while(HAL_UART_Receive(&huart2, (uint16_t *)(&status), 1, 0) == HAL_OK) {
-    uint8_t c = HAL_UART_Receive(&huart2, (uint16_t *)(&msg), sizeof(msg), HAL_MAX_DELAY);
+  while(HAL_UART_Receive(&huart2, (uint8_t *)(&status), 1, HAL_MAX_DELAY) == HAL_OK) {
+    uint8_t c = HAL_UART_Receive(&huart2, (uint8_t *)(&msg), sizeof(msg), HAL_MAX_DELAY);
 
     // Try to get a new message
     if(mavlink_parse_char(MAVLINK_COMM_0, c, &msg, &status)) {
@@ -217,7 +270,7 @@ void comm_receive() {
           {
             // E.g. read GCS heartbeat and go into
             // comm lost mode if timer times out
-        printf("Pixhawk 4 Heartbeat Received! \n\r");
+        	  printf("Pixhawk 4 Heartbeat Received! \n\r");
           }
           break;
 
@@ -260,14 +313,12 @@ void comm_receive() {
              */
             mavlink_attitude_t attitude;
             mavlink_msg_attitude_decode(&msg, &attitude);
-
-            if(attitude.roll>1) leds_modo = 0;
-            else if(attitude.roll<-1) leds_modo = 2;
-            else leds_modo=1;
+            char leds_modo = 0;
+            if(attitude.roll>1) { leds_modo = 0; }
+            else if(attitude.roll<-1) { leds_modo = 2; }
+            else { leds_modo=1; }
           }
           break;
-
-
        default:
           break;
       }
@@ -307,4 +358,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
